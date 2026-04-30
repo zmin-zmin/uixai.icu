@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Particle Earth</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #000010;
+      overflow: hidden;
+      font-family: 'Segoe UI', sans-serif;
+    }
+    canvas { display: block; }
+    #info {
+      position: absolute;
+      top: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255,255,255,0.7);
+      font-size: 13px;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      pointer-events: none;
+      text-shadow: 0 0 20px rgba(100,180,255,0.8);
+    }
+    #subtitle {
+      position: absolute;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255,255,255,0.35);
+      font-size: 11px;
+      letter-spacing: 6px;
+      text-transform: uppercase;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="info">Particle Earth</div>
+  <div id="subtitle">drag to rotate &nbsp;·&nbsp; scroll to zoom</div>
+  <canvas id="c"></canvas>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // ─── Scene Setup ────────────────────────────────────────────────────────────
+    const W = window.innerWidth, H = window.innerHeight;
+    const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(W, H);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(50, W / H, 0.1, 1000);
+    camera.position.set(0, 0, 2.8);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.minDistance = 1.6;
+    controls.maxDistance = 8;
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 0.5;
+
+    // ─── Earth Texture (canvas-based world map) ──────────────────────────────
+    // Generate a geo-based particle distribution using a world map canvas
+    const EARTH_RADIUS = 1.0;
+    const PARTICLE_COUNT = 80000;
+
+    // Simple land mask via equirectangular canvas drawing
+    const mapCanvas = document.createElement('canvas');
+    mapCanvas.width = 2048; mapCanvas.height = 1024;
+    const ctx = mapCanvas.getContext('2d');
+
+    // Dark ocean base
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, 2048, 1024);
+
+    // Approximate land shapes using polygons (simplified continents)
+    ctx.fillStyle = '#fff';
+
+    // Helper: draw polygon from lon/lat array
+    function poly(points) {
+      const W2 = 2048, H2 = 1024;
+      ctx.beginPath();
+      points.forEach(([lon, lat], i) => {
+        const x = (lon + 180) / 360 * W2;
+        const y = (90 - lat) / 180 * H2;
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      });
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // North America
+    poly([[-165,70],[-140,75],[-95,75],[-80,70],[-60,50],[-55,45],[-65,45],[-80,25],[-85,15],[-77,8],[-85,10],[-92,18],[-105,20],[-118,32],[-120,35],[-124,48],[-130,56],[-145,60],[-155,62],[-165,70]]);
+    // Greenland
+    poly([[-70,82],[-20,84],[-18,77],[-25,70],[-45,60],[-65,60],[-70,66],[-70,82]]);
+    // South America
+    poly([[-80,10],[-75,12],[-63,10],[-55,5],[-50,0],[-48,-5],[-35,-10],[-35,-20],[-42,-22],[-45,-23],[-48,-27],[-50,-32],[-65,-55],[-70,-55],[-72,-50],[-74,-42],[-72,-35],[-68,-30],[-65,-20],[-60,-15],[-55,-10],[-60,-5],[-62,2],[-70,8],[-77,8],[-80,10]]);
+    // Europe
+    poly([[0,50],[10,55],[20,60],[25,65],[28,70],[25,72],[18,70],[10,62],[5,58],[0,58],[-5,55],[-10,52],[-8,44],[-5,36],[0,37],[5,44],[10,45],[15,45],[20,45],[25,44],[30,42],[28,38],[22,38],[15,38],[10,38],[5,37],[0,37],[-5,36],[-10,37],[-15,38],[-10,42],[-5,44],[0,48],[0,50]]);
+    // Africa
+    poly([[-18,15],[-16,20],[-17,25],[-15,30],[-8,37],[0,37],[10,38],[15,38],[20,38],[25,37],[32,32],[36,28],[43,12],[50,12],[45,5],[42,-2],[40,-10],[35,-20],[28,-30],[25,-35],[20,-38],[15,-35],[12,-25],[10,-15],[8,-5],[5,5],[2,8],[-5,8],[-15,15],[-18,15]]);
+    // Asia (simplified)
+    poly([[30,42],[40,38],[45,42],[50,45],[55,50],[60,55],[65,60],[70,65],[80,70],[100,72],[130,72],[140,70],[145,60],[140,50],[130,42],[120,35],[115,30],[105,22],[100,12],[100,5],[105,0],[110,-5],[110,-8],[105,-8],[100,-5],[95,5],[90,15],[80,25],[70,28],[60,25],[55,25],[45,30],[40,36],[36,36],[30,42]]);
+    // Japan
+    poly([[130,32],[132,34],[135,35],[137,37],[140,40],[142,44],[140,45],[136,44],[132,41],[130,35],[130,32]]);
+    // Australia
+    poly([[115,-22],[120,-18],[128,-14],[135,-12],[138,-15],[138,-20],[136,-25],[138,-30],[140,-35],[145,-38],[150,-38],[155,-32],[150,-26],[145,-18],[140,-15],[135,-14],[130,-14],[125,-14],[120,-18],[115,-22]]);
+    poly([[145,-38],[150,-42],[148,-44],[145,-40],[145,-38]]); // Tasmania approx
+
+    // Antarctica
+    poly([[-180,-70],[-180,-90],[180,-90],[180,-70]]);
+
+    // ─── Read pixel data to weight particles toward land ─────────────────────
+    const imgData = ctx.getImageData(0, 0, 2048, 1024).data;
+
+    function isLand(lon, lat) {
+      const x = Math.floor((lon + 180) / 360 * 2047);
+      const y = Math.floor((90 - lat) / 180 * 1023);
+      const idx = (y * 2048 + x) * 4;
+      return imgData[idx] > 128;
+    }
+
+    // ─── Generate particle positions ─────────────────────────────────────────
+    // Mix: 70% land-weighted, 30% pure random (ocean)
+    const positions = new Float32Array(PARTICLE_COUNT * 3);
+    const colors    = new Float32Array(PARTICLE_COUNT * 3);
+    const sizes     = new Float32Array(PARTICLE_COUNT);
+
+    const landColor  = new THREE.Color('#4fc3f7');
+    const oceanColor = new THREE.Color('#0d2b5e');
+    const glowColor  = new THREE.Color('#81d4fa');
+
+    let i = 0;
+    let attempts = 0;
+    const landRatio = 0.65;
+
+    while (i < PARTICLE_COUNT) {
+      attempts++;
+      if (attempts > PARTICLE_COUNT * 20) break; // safety
+
+      // Uniform sphere sampling
+      const theta = Math.random() * Math.PI * 2;           // longitude
+      const phi   = Math.acos(2 * Math.random() - 1);      // co-latitude
+      const lon   = (theta / Math.PI) * 180 - 180;
+      const lat   = 90 - (phi / Math.PI) * 180;
+      const land  = isLand(lon, lat);
+
+      // Reject ocean particles probabilistically so land gets more density
+      if (!land && Math.random() > 0.45) continue;
+
+      const r = EARTH_RADIUS + (Math.random() - 0.5) * 0.006;
+      const sinPhi = Math.sin(phi);
+      positions[i*3]   = r * sinPhi * Math.cos(theta);
+      positions[i*3+1] = r * Math.cos(phi);
+      positions[i*3+2] = r * sinPhi * Math.sin(theta);
+
+      if (land) {
+        const t = Math.random();
+        const c = landColor.clone().lerp(glowColor, t * 0.5);
+        colors[i*3]   = c.r;
+        colors[i*3+1] = c.g;
+        colors[i*3+2] = c.b;
+        sizes[i] = 0.6 + Math.random() * 0.8;
+      } else {
+        const t = Math.random();
+        const c = oceanColor.clone().lerp(new THREE.Color('#1565c0'), t);
+        colors[i*3]   = c.r;
+        colors[i*3+1] = c.g;
+        colors[i*3+2] = c.b;
+        sizes[i] = 0.3 + Math.random() * 0.4;
+      }
+      i++;
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('color',    new THREE.BufferAttribute(colors, 3));
+    geo.setAttribute('size',     new THREE.BufferAttribute(sizes, 1));
+
+    // Custom shader material for crisp round particles
+    const mat = new THREE.ShaderMaterial({
+      vertexColors: true,
+      transparent: true,
+      depthWrite: false,
+      uniforms: {
+        uTime:      { value: 0 },
+        uPixelRatio: { value: renderer.getPixelRatio() },
+      },
+      vertexShader: `
+        attribute float size;
+        varying vec3 vColor;
+        uniform float uTime;
+        uniform float uPixelRatio;
+        void main() {
+          vColor = color;
+          vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+          // subtle breathing effect
+          float pulse = 1.0 + 0.08 * sin(uTime * 1.2 + position.y * 8.0);
+          gl_PointSize = size * uPixelRatio * pulse * (300.0 / -mvPos.z);
+          gl_Position = projectionMatrix * mvPos;
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vColor;
+        void main() {
+          vec2 uv = gl_PointCoord - 0.5;
+          float d = length(uv);
+          if (d > 0.5) discard;
+          float alpha = smoothstep(0.5, 0.2, d);
+          gl_FragColor = vec4(vColor, alpha);
+        }
+      `,
+    });
+
+    const particles = new THREE.Points(geo, mat);
+    scene.add(particles);
+
+    // ─── Atmosphere glow ─────────────────────────────────────────────────────
+    const atmGeo = new THREE.SphereGeometry(EARTH_RADIUS * 1.08, 64, 64);
+    const atmMat = new THREE.ShaderMaterial({
+      transparent: true,
+      side: THREE.FrontSide,
+      depthWrite: false,
+      uniforms: { uCameraPos: { value: camera.position } },
+      vertexShader: `
+        varying vec3 vNormal;
+        varying vec3 vWorldPos;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          vWorldPos = (modelMatrix * vec4(position,1.0)).xyz;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 uCameraPos;
+        varying vec3 vNormal;
+        varying vec3 vWorldPos;
+        void main() {
+          vec3 viewDir = normalize(uCameraPos - vWorldPos);
+          float rim = 1.0 - max(dot(viewDir, vNormal), 0.0);
+          rim = pow(rim, 3.5);
+          vec3 atmColor = mix(vec3(0.05,0.3,0.8), vec3(0.4,0.8,1.0), rim);
+          gl_FragColor = vec4(atmColor, rim * 0.5);
+        }
+      `,
+    });
+    scene.add(new THREE.Mesh(atmGeo, atmMat));
+
+    // ─── Background Stars ─────────────────────────────────────────────────────
+    const starCount = 6000;
+    const starPos = new Float32Array(starCount * 3);
+    for (let s = 0; s < starCount; s++) {
+      const r = 80 + Math.random() * 120;
+      const t = Math.random() * Math.PI * 2;
+      const p = Math.acos(2 * Math.random() - 1);
+      starPos[s*3]   = r * Math.sin(p) * Math.cos(t);
+      starPos[s*3+1] = r * Math.cos(p);
+      starPos[s*3+2] = r * Math.sin(p) * Math.sin(t);
+    }
+    const starGeo = new THREE.BufferGeometry();
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+    const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.12, transparent: true, opacity: 0.6 });
+    scene.add(new THREE.Points(starGeo, starMat));
+
+    // ─── Ambient + directional light (for atm shader) ────────────────────────
+    scene.add(new THREE.AmbientLight(0x112244, 1));
+    const dirLight = new THREE.DirectionalLight(0x4488ff, 1.5);
+    dirLight.position.set(5, 3, 5);
+    scene.add(dirLight);
+
+    // ─── Resize ───────────────────────────────────────────────────────────────
+    window.addEventListener('resize', () => {
+      const w = window.innerWidth, h = window.innerHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+      mat.uniforms.uPixelRatio.value = renderer.getPixelRatio();
+    });
+
+    // ─── Render Loop ─────────────────────────────────────────────────────────
+    const clock = new THREE.Clock();
+    function animate() {
+      requestAnimationFrame(animate);
+      const t = clock.getElapsedTime();
+      mat.uniforms.uTime.value = t;
+      atmMat.uniforms.uCameraPos.value.copy(camera.position);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>
